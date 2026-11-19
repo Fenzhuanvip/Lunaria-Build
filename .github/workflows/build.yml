@@ -108,35 +108,6 @@ jobs:
           cp third_party/bettersh/build/shim/libbshguest-musl.so third_party/bettersh/build/shim/libbshguest-glibc.so "$DEST/"
           ls -lh "$DEST" | grep -E 'ld-musl|bshguest'
 
-      - name: Build Termony HNP
-        run: |
-          set -e
-          export OHOS_SDK_HOME="$DEVECO_SDK_HOME/default/openharmony"
-          export OHOS_ARCH=aarch64
-          export OHOS_ABI=arm64-v8a
-          rm -rf /tmp/termony
-          git clone --depth 1 https://github.com/TermonyHQ/Termony.git /tmp/termony
-          CLANG_VER=$(ls "$OHOS_SDK_HOME/native/llvm/lib/clang" | head -1)
-          echo "clang version dir: $CLANG_VER"
-          sed -i "s/15\.0\.4/$CLANG_VER/g" /tmp/termony/build-hnp/Makefile
-          sed -i 's#\.\./configure --host \$(OHOS_ARCH)-unknown-linux-musl --enable-host-shared#CFLAGS="-I$(shell pwd)/../sysroot/include -Wno-int-conversion -O2 -fPIE" CXXFLAGS="-I$(shell pwd)/../sysroot/include -O2 -fPIE" LDFLAGS="-L$(shell pwd)/../sysroot/lib -pie" ../configure --host $(OHOS_ARCH)-unknown-linux-musl --enable-host-shared#' /tmp/termony/build-hnp/gcc/Makefile
-          grep -n "configure --host" /tmp/termony/build-hnp/gcc/Makefile
-          if ! make -C /tmp/termony/build-hnp \
-               PKGS="gmp mpfr mpc binutils make gcc" all > /tmp/termony.log 2>&1; then
-            echo '--- termony.log (tail) ---'
-            tail -120 /tmp/termony.log
-            exit 1
-          fi
-          tail -5 /tmp/termony.log
-          rm -rf /tmp/termony/build-hnp/*/temp /tmp/termony/build-hnp/*/download \
-                 /tmp/termony/build-hnp/download
-          df -h /
-          echo '--- gcc elf type ---'
-          "$OHOS_SDK_HOME/native/llvm/bin/llvm-readelf" -h /tmp/termony/build-hnp/sysroot/bin/gcc 2>/dev/null | grep 'Type:' || true
-          mkdir -p "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp"
-          ( cd /tmp/termony/build-hnp/sysroot && tar czf "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp/termony.tar.gz" . )
-          ls -lh "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp/termony.tar.gz"
-
       - name: Build HAP
         run: |
           set -eo pipefail
