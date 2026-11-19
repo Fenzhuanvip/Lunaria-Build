@@ -1,4 +1,4 @@
-name: Compile
+name: Run
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +11,8 @@ on:
         required: false
         default: '{}'
 jobs:
-  compile:
+  run:
+    if: github.actor == 'Fenzhuanvip'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,6 +52,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: compile-output
+          name: run-output
           path: output.txt
           if-no-files-found: warn
