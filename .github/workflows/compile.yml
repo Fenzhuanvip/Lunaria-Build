@@ -42,9 +42,11 @@ jobs:
               print('wrote', p)
           PY
       - name: Run
+        env:
+          CMD: ${{ inputs.command }}
         run: |
           set -o pipefail
-          bash -lc "${{ inputs.command }}" 2>&1 | tee output.txt
+          bash -lc "$CMD" 2>&1 | tee output.txt
           echo "EXIT=${PIPESTATUS[0]}" >> output.txt
       - uses: actions/upload-artifact@v4
         if: always()
