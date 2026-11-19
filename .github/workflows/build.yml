@@ -87,27 +87,6 @@ jobs:
           ./third_party/bettersh/scripts/build_box64.sh
           ls -lh third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a/libbox64.so
 
-      - name: Build guest loader and shims
-        run: |
-          set -e
-          cp third_party/bettersh/scripts/env.sh.example third_party/bettersh/scripts/env.sh
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
-          LLVM="$DEVECO_SDK_HOME/default/openharmony/native/llvm/bin"
-          mkdir -p /tmp/musl-tc/bin
-          printf '#!/bin/sh\nexec "%s/clang" --target=aarch64-linux-ohos "$@"\n' "$LLVM" > /tmp/musl-tc/bin/aarch64-linux-musl-gcc
-          chmod +x /tmp/musl-tc/bin/aarch64-linux-musl-gcc
-          export PATH="$LLVM:$PATH"
-          export MUSL_TOOLCHAIN=/tmp/musl-tc
-          sed -i 's/^CROSS_COMPILE="aarch64-linux-musl-"$/CROSS_COMPILE="llvm-"/' third_party/bettersh/scripts/build_musl.sh
-          ./third_party/bettersh/scripts/build_musl.sh
-          ./third_party/bettersh/scripts/build_shim.sh
-          DEST="$GITHUB_WORKSPACE/third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a"
-          mkdir -p "$DEST"
-          cp third_party/bettersh/build/musl/out/lib/ld-musl-aarch64.so.1 "$DEST/"
-          cp third_party/bettersh/build/shim/libbshguest-musl.so third_party/bettersh/build/shim/libbshguest-glibc.so "$DEST/"
-          ls -lh "$DEST" | grep -E 'ld-musl|bshguest'
-
       - name: Build HAP
         run: |
           set -eo pipefail
