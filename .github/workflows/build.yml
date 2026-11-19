@@ -144,44 +144,6 @@ jobs:
             --mode module -p product=default -p debuggable=false --no-daemon \
             2>&1 | tee build-output.txt
 
-      - name: Inject HNP
-        run: |
-          set -eo pipefail
-          PACKER="$DEVECO_SDK_HOME/default/openharmony/toolchains/lib/app_packing_tool.jar"
-          test -f "$PACKER"
-          B=entry/build/default
-          OUT="$B/outputs/default/entry-default-hnp-unsigned.hap"
-          ARGS=(--mode hap --force true
-            --lib-path "$B/intermediates/stripped_native_libs/default"
-            --json-path "$B/intermediates/package/default/module.json"
-            --resources-path "$B/intermediates/res/default/resources"
-            --index-path "$B/intermediates/res/default/resources.index"
-            --pack-info-path "$B/outputs/default/pack.info"
-            --out-path "$OUT"
-            --ets-path "$B/intermediates/loader_out/default/ets"
-            --hnp-path entry/hnp)
-          CTX="$B/intermediates/loader/default/pkgContextInfo.json"
-          if [ -f "$CTX" ]; then ARGS+=(--pkg-context-path "$CTX"); fi
-          if ! java -Xmx4g -jar "$PACKER" "${ARGS[@]}" > /tmp/inject.log 2>&1; then
-            echo '--- inject.log (tail) ---'
-            tail -120 /tmp/inject.log
-            exit 1
-          fi
-          tail -5 /tmp/inject.log
-          unzip -l "$OUT" | grep 'hnp/.*\.hnp'
-          # 注入前的原始包没用了（少了 HNP/工具链），删掉，保证产物只有一个 HAP。
-          rm -f "$B/outputs/default/entry-default-unsigned.hap"
-          ls -lh "$OUT"
-          df -h /
-
-      - name: Upload inject log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: inject-log
-          path: /tmp/inject.log
-          if-no-files-found: warn
-
       - name: Collect artifacts
         if: always()
         run: |
