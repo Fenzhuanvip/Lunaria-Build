@@ -1,0 +1,206 @@
+name: Build HAP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build HAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLT_URL: https://image.cdn.dog/commandline-tools-linux-x64-6.1.1.280.zip
+      TOOL_HOME: /opt/command-line-tools
+
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: Fenzhuanvip/Lunaria
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download HarmonyOS Command Line Tools
+        run: |
+          set -e
+          for i in 1 2 3 4 5; do
+            if wget -c -q --tries=2 --timeout=60 "$CLT_URL" -O /tmp/clt.zip; then
+              echo "download attempt $i ok"
+              break
+            fi
+            echo "download attempt $i failed, retrying..."
+            sleep 5
+          done
+          ls -lh /tmp/clt.zip
+          test $(stat -c%s /tmp/clt.zip) -gt 1000000000
+          sudo mkdir -p "$TOOL_HOME"
+          sudo unzip -q /tmp/clt.zip -d /opt/
+          sudo chown -R "$(id -u):$(id -g)" "$TOOL_HOME"
+          sudo chmod -R a+rX "$TOOL_HOME"
+          HVIGORW=$(find "$TOOL_HOME" -name hvigorw -type f | head -1)
+          test -n "$HVIGORW"
+          echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
+          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+          echo "$TOOL_HOME/bin" >> "$GITHUB_PATH"
+          echo "$(dirname "$HVIGORW")" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        run: |
+          which ohpm || ls "$TOOL_HOME/bin/"
+          ohpm -v || true
+          ls -la "$TOOL_HOME/sdk/default/openharmony" 2>/dev/null || true
+
+      - name: Fetch QEMU runtime
+        run: |
+          chmod +x scripts/fetch-qemu.sh
+          ./scripts/fetch-qemu.sh
+
+      - name: Install ohpm deps
+        run: |
+          set -e
+          ohpm config set registry https://ohpm.openharmony.cn/ohpm/
+          install_with_retry() {
+            local dir="$1"
+            for i in 1 2 3 4 5 6; do
+              if (cd "$dir" && ohpm install); then
+                echo "ohpm install ($dir) ok"
+                return 0
+              fi
+              echo "ohpm install ($dir) attempt $i failed, retry in 15s"
+              sleep 15
+            done
+            return 1
+          }
+          install_with_retry "."
+          install_with_retry "entry"
+          install_with_retry "third_party/bettersh/iec/platform/ohos/har"
+
+      - name: Build box64
+        run: |
+          set -e
+          cp third_party/bettersh/scripts/env.sh.example third_party/bettersh/scripts/env.sh
+          sed -i 's#^export HAP_LIBS_DIR=.*#export HAP_LIBS_DIR="$ROOT/iec/platform/ohos/har/libs/$NATIVE_ARCH"#' third_party/bettersh/scripts/env.sh
+          ./third_party/bettersh/scripts/build_box64.sh
+          ls -lh third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a/libbox64.so
+
+      - name: Build guest loader and shims
+        run: |
+          set -e
+          cp third_party/bettersh/scripts/env.sh.example third_party/bettersh/scripts/env.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          LLVM="$DEVECO_SDK_HOME/default/openharmony/native/llvm/bin"
+          mkdir -p /tmp/musl-tc/bin
+          printf '#!/bin/sh\nexec "%s/clang" --target=aarch64-linux-ohos "$@"\n' "$LLVM" > /tmp/musl-tc/bin/aarch64-linux-musl-gcc
+          chmod +x /tmp/musl-tc/bin/aarch64-linux-musl-gcc
+          export PATH="$LLVM:$PATH"
+          export MUSL_TOOLCHAIN=/tmp/musl-tc
+          sed -i 's/^CROSS_COMPILE="aarch64-linux-musl-"$/CROSS_COMPILE="llvm-"/' third_party/bettersh/scripts/build_musl.sh
+          ./third_party/bettersh/scripts/build_musl.sh
+          ./third_party/bettersh/scripts/build_shim.sh
+          DEST="$GITHUB_WORKSPACE/third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a"
+          mkdir -p "$DEST"
+          cp third_party/bettersh/build/musl/out/lib/ld-musl-aarch64.so.1 "$DEST/"
+          cp third_party/bettersh/build/shim/libbshguest-musl.so third_party/bettersh/build/shim/libbshguest-glibc.so "$DEST/"
+          ls -lh "$DEST" | grep -E 'ld-musl|bshguest'
+
+      - name: Build Termony HNP
+        run: |
+          set -e
+          export OHOS_SDK_HOME="$DEVECO_SDK_HOME/default/openharmony"
+          export OHOS_ARCH=aarch64
+          export OHOS_ABI=arm64-v8a
+          rm -rf /tmp/termony
+          git clone --depth 1 https://github.com/TermonyHQ/Termony.git /tmp/termony
+          CLANG_VER=$(ls "$OHOS_SDK_HOME/native/llvm/lib/clang" | head -1)
+          echo "clang version dir: $CLANG_VER"
+          sed -i "s/15\.0\.4/$CLANG_VER/g" /tmp/termony/build-hnp/Makefile
+          sed -i 's#\.\./configure --host \$(OHOS_ARCH)-unknown-linux-musl --enable-host-shared#CFLAGS="-I$(shell pwd)/../sysroot/include -Wno-int-conversion -O2 -fPIE" CXXFLAGS="-I$(shell pwd)/../sysroot/include -O2 -fPIE" LDFLAGS="-L$(shell pwd)/../sysroot/lib -pie" ../configure --host $(OHOS_ARCH)-unknown-linux-musl --enable-host-shared#' /tmp/termony/build-hnp/gcc/Makefile
+          grep -n "configure --host" /tmp/termony/build-hnp/gcc/Makefile
+          if ! make -C /tmp/termony/build-hnp \
+               PKGS="gmp mpfr mpc binutils make gcc" all > /tmp/termony.log 2>&1; then
+            echo '--- termony.log (tail) ---'
+            tail -120 /tmp/termony.log
+            exit 1
+          fi
+          tail -5 /tmp/termony.log
+          rm -rf /tmp/termony/build-hnp/*/temp /tmp/termony/build-hnp/*/download \
+                 /tmp/termony/build-hnp/download
+          df -h /
+          echo '--- gcc elf type ---'
+          "$OHOS_SDK_HOME/native/llvm/bin/llvm-readelf" -h /tmp/termony/build-hnp/sysroot/bin/gcc 2>/dev/null | grep 'Type:' || true
+          mkdir -p "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp"
+          ( cd /tmp/termony/build-hnp/sysroot && tar czf "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp/termony.tar.gz" . )
+          ls -lh "$GITHUB_WORKSPACE/entry/src/main/resources/rawfile/hnp/termony.tar.gz"
+
+      - name: Build HAP
+        run: |
+          set -eo pipefail
+          node "$TOOL_HOME/hvigor/bin/hvigorw.js" assembleHap \
+            --mode module -p product=default -p debuggable=false --no-daemon \
+            2>&1 | tee build-output.txt
+
+      - name: Inject HNP
+        run: |
+          set -eo pipefail
+          PACKER="$DEVECO_SDK_HOME/default/openharmony/toolchains/lib/app_packing_tool.jar"
+          test -f "$PACKER"
+          B=entry/build/default
+          OUT="$B/outputs/default/entry-default-hnp-unsigned.hap"
+          ARGS=(--mode hap --force true
+            --lib-path "$B/intermediates/stripped_native_libs/default"
+            --json-path "$B/intermediates/package/default/module.json"
+            --resources-path "$B/intermediates/res/default/resources"
+            --index-path "$B/intermediates/res/default/resources.index"
+            --pack-info-path "$B/outputs/default/pack.info"
+            --out-path "$OUT"
+            --ets-path "$B/intermediates/loader_out/default/ets"
+            --hnp-path entry/hnp)
+          CTX="$B/intermediates/loader/default/pkgContextInfo.json"
+          if [ -f "$CTX" ]; then ARGS+=(--pkg-context-path "$CTX"); fi
+          if ! java -Xmx4g -jar "$PACKER" "${ARGS[@]}" > /tmp/inject.log 2>&1; then
+            echo '--- inject.log (tail) ---'
+            tail -120 /tmp/inject.log
+            exit 1
+          fi
+          tail -5 /tmp/inject.log
+          unzip -l "$OUT" | grep 'hnp/.*\.hnp'
+          # 注入前的原始包没用了（少了 HNP/工具链），删掉，保证产物只有一个 HAP。
+          rm -f "$B/outputs/default/entry-default-unsigned.hap"
+          ls -lh "$OUT"
+          df -h /
+
+      - name: Upload inject log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inject-log
+          path: /tmp/inject.log
+          if-no-files-found: warn
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          mkdir -p artifacts
+          find . -name "*.hap" -exec cp {} artifacts/ \; 2>/dev/null || true
+          ls -lh artifacts || true
+
+      - name: Upload HAP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-hap
+          path: artifacts/*.hap
+          if-no-files-found: warn
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build-output.txt
+          if-no-files-found: warn
