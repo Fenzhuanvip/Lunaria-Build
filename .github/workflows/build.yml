@@ -108,7 +108,6 @@ jobs:
           name: guncat-hap
           path: artifacts/*.hap
           if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload build log
         if: always()
