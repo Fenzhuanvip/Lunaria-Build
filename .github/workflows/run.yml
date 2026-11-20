@@ -54,4 +54,4 @@ jobs:
         with:
           name: run-output
           path: output.txt
-          if-no-files-found: warn
+          if-no-files-found: warn          retention-days: 1
