@@ -115,4 +115,4 @@ jobs:
         with:
           name: build-log
           path: build-output.txt
-          if-no-files-found: warn          retention-days: 1
+          if-no-files-found: warn
