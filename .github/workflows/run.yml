@@ -10,6 +10,9 @@ on:
         description: 'JSON map: path -> base64 content'
         required: false
         default: '{}'
+permissions:
+  contents: read
+
 jobs:
   run:
     if: github.actor == 'Fenzhuanvip'

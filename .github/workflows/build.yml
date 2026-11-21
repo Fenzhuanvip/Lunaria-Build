@@ -10,7 +10,10 @@ on:
 
 concurrency:
   group: hap-build
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
