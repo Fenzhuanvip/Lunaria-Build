@@ -16,18 +16,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Delete completed build run
+      - name: Delete build run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           gh api -X DELETE "repos/$REPO/actions/runs/$RUN_ID"
-      - name: Delete this cleanup run
+      - name: Drop older cleanup runs
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
+          KEEP: ${{ github.run_id }}
         run: |
-          gh api -X DELETE "repos/$REPO/actions/runs/$RUN_ID" || true
+          set -euo pipefail
+          ids=$(gh api "repos/$REPO/actions/workflows/cleanup.yml/runs?per_page=100" --jq '.workflow_runs[].id')
+          for id in $ids; do
+            if [ "$id" != "$KEEP" ]; then
+              gh api -X DELETE "repos/$REPO/actions/runs/$id" || true
+            fi
+          done
