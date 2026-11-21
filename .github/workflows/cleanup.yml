@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   cleanup:
-    if: github.event.workflow_run.conclusion == 'success'
+    # 成功和失败都清：日志已落到私有 release，公开仓库不留记录
     name: Delete finished build run
     runs-on: ubuntu-latest
     timeout-minutes: 5
