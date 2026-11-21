@@ -2,6 +2,11 @@ name: Build HAP
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: private repo branch to build
+        required: false
+        default: main
 
 concurrency:
   group: hap-build
@@ -29,6 +34,7 @@ jobs:
           repository: Fenzhuanvip/Lunaria
           token: ${{ secrets.GH_PAT }}
           path: src
+          ref: ${{ inputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
