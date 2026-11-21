@@ -125,7 +125,6 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           repository: Fenzhuanvip/Lunaria
           tag: ci-artifacts
-          asset: hap-${{ github.run_id }}.tar.gz
           paths: |
             src/artifacts
             src/build-output.txt

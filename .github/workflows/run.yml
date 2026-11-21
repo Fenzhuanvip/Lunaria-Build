@@ -61,7 +61,6 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           repository: Fenzhuanvip/Lunaria
           tag: ci-artifacts
-          asset: sandbox-${{ github.run_id }}.tar.gz
           paths: |
             output.txt
             out
