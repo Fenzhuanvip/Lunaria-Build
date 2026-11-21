@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout CI repo
+        uses: actions/checkout@v4
       - name: Toolchain
         run: |
           sudo apt-get update -qq
@@ -46,12 +48,20 @@ jobs:
         env:
           CMD: ${{ inputs.command }}
         run: |
-          set -o pipefail
-          bash -lc "$CMD" 2>&1 | tee output.txt
-          echo "EXIT=${PIPESTATUS[0]}" >> output.txt
-      - uses: actions/upload-artifact@v4
+          set +e
+          bash -lc "$CMD" > output.txt 2>&1
+          code=$?
+          echo "exit code: $code"
+          echo "EXIT=$code" >> output.txt
+          exit $code
+      - name: Publish to private repo
         if: always()
+        uses: ./.github/actions/publish-private
         with:
-          name: run-output
-          path: output.txt
-          if-no-files-found: warn
+          token: ${{ secrets.GH_PAT }}
+          repository: Fenzhuanvip/Lunaria
+          tag: ci-artifacts
+          asset: sandbox-${{ github.run_id }}.tar.gz
+          paths: |
+            output.txt
+            out

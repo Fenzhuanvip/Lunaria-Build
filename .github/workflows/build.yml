@@ -3,21 +3,32 @@ name: Build HAP
 on:
   workflow_dispatch:
 
+concurrency:
+  group: hap-build
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build HAP
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: src
     env:
       CLT_URL: https://image.cdn.dog/commandline-tools-linux-x64-6.1.1.280.zip
       TOOL_HOME: /opt/command-line-tools
 
     steps:
+      - name: Checkout CI repo
+        uses: actions/checkout@v4
+
       - name: Checkout private source
         uses: actions/checkout@v4
         with:
           repository: Fenzhuanvip/Lunaria
           token: ${{ secrets.GH_PAT }}
+          path: src
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -89,10 +100,16 @@ jobs:
 
       - name: Build HAP
         run: |
-          set -eo pipefail
-          node "$TOOL_HOME/hvigor/bin/hvigorw.js" assembleHap \
+          set -o pipefail
+          if node "$TOOL_HOME/hvigor/bin/hvigorw.js" assembleHap \
             --mode module -p product=default -p debuggable=false --no-daemon \
-            2>&1 | tee build-output.txt
+            > build-output.txt 2>&1; then
+            echo "BUILD SUCCESSFUL"
+          else
+            code=$?
+            echo "build failed (exit $code), full log is in the private artifact"
+            exit $code
+          fi
 
       - name: Collect artifacts
         if: always()
@@ -101,18 +118,14 @@ jobs:
           find . -name "*.hap" -exec cp {} artifacts/ \; 2>/dev/null || true
           ls -lh artifacts || true
 
-      - name: Upload HAP
+      - name: Publish to private repo
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/publish-private
         with:
-          name: guncat-hap
-          path: artifacts/*.hap
-          if-no-files-found: warn
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build-output.txt
-          if-no-files-found: warn
+          token: ${{ secrets.GH_PAT }}
+          repository: Fenzhuanvip/Lunaria
+          tag: ci-artifacts
+          asset: hap-${{ github.run_id }}.tar.gz
+          paths: |
+            src/artifacts
+            src/build-output.txt

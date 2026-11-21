@@ -1,0 +1,68 @@
+name: Publish artifacts to private repository
+description: Pack outputs and upload them as a release asset in a private repository
+
+inputs:
+  token:
+    description: PAT with repo scope on the target private repository
+    required: true
+  repository:
+    description: Target private repository, owner/name
+    required: true
+  tag:
+    description: Release tag that holds CI artifacts
+    required: false
+    default: ci-artifacts
+  asset:
+    description: Asset file name
+    required: true
+  paths:
+    description: Newline separated list of paths to pack
+    required: true
+  keep:
+    description: Number of recent assets to keep
+    required: false
+    default: "10"
+
+runs:
+  using: composite
+  steps:
+    - name: Pack and upload
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TARGET_REPO: ${{ inputs.repository }}
+        TAG: ${{ inputs.tag }}
+        ASSET: ${{ inputs.asset }}
+        PATHS: ${{ inputs.paths }}
+        KEEP: ${{ inputs.keep }}
+      run: |
+        set -euo pipefail
+        STAGE=$(mktemp -d)
+        count=0
+        while IFS= read -r p; do
+          [ -z "$p" ] && continue
+          if [ -e "$p" ]; then
+            cp -r "$p" "$STAGE"/
+            count=$((count + 1))
+          else
+            echo "skip missing: $p"
+          fi
+        done <<< "$PATHS"
+        if [ "$count" -eq 0 ]; then
+          echo "nothing to publish"
+          exit 0
+        fi
+        tar -czf "/tmp/$ASSET" -C "$STAGE" .
+        ls -lh "/tmp/$ASSET"
+        gh api "repos/$TARGET_REPO/releases/tags/$TAG" >/dev/null 2>&1 || \
+          gh api -X POST "repos/$TARGET_REPO/releases" \
+            -f tag_name="$TAG" -f name="CI artifacts" -f body="Automated CI artifacts" >/dev/null
+        gh api "repos/$TARGET_REPO/releases/tags/$TAG" --jq '.assets | sort_by(.created_at)' \
+          | python3 -c 'import json,sys;d=json.load(sys.stdin);keep=int(sys.argv[1]);n=max(0,len(d)-keep+1);print("\n".join(str(a["id"]) for a in d[:n]))' "$KEEP" \
+          | while IFS= read -r id; do
+              [ -n "$id" ] || continue
+              gh api -X DELETE "repos/$TARGET_REPO/releases/assets/$id" >/dev/null
+              echo "pruned asset $id"
+            done
+        gh release upload "$TAG" "/tmp/$ASSET" --repo "$TARGET_REPO" --clobber
