@@ -25,7 +25,7 @@ jobs:
         working-directory: src
     env:
       CLT_URL: https://image.cdn.dog/commandline-tools-linux-x64-6.1.1.280.zip
-      CLT_SHA256: "REPLACE_WITH_ACTUAL_SHA256"
+      CLT_SHA256: "b9caf7b73c541b90e6c8f3c7c3de7f2bea9b35e41e80cd3525f2f759ebf16cf4"
       TOOL_HOME: /opt/command-line-tools
 
     steps:
