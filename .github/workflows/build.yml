@@ -107,6 +107,13 @@ jobs:
           ./third_party/bettersh/scripts/build_box64.sh
           ls -lh third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a/libbox64.so
 
+      - name: Restore big libs (libnode.so)
+        run: |
+          # libnode.so 以 .xz 入库（GitHub 拒收 >100MB 单文件），打包前必须还原，
+          # 否则 HAP 内无 node，stdio 连接器会报 node: inaccessible or not found。
+          bash scripts/prepare-big-libs.sh
+          ls -lh third_party/bettersh/iec/platform/ohos/har/libs/arm64-v8a/libnode.so
+
       - name: Build HAP
         run: |
           set -o pipefail
