@@ -6,34 +6,13 @@ on:
     types: [completed]
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
   cleanup:
-    # 成功和失败都清：日志已落到私有 release，公开仓库不留记录
-    name: Delete finished build run
+    name: Retention notice
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Delete build run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          gh api -X DELETE "repos/$REPO/actions/runs/$RUN_ID"
-      - name: Drop older cleanup runs
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          KEEP: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          ids=$(gh api "repos/$REPO/actions/workflows/cleanup.yml/runs?per_page=100" --jq '.workflow_runs[].id')
-          for id in $ids; do
-            if [ "$id" != "$KEEP" ]; then
-              gh api -X DELETE "repos/$REPO/actions/runs/$id" || true
-            fi
-          done
+      - name: No-op
+        run: echo "CI 运行记录保留由 GitHub Actions 仓库级保留策略（retention days）管理，本工作流不再主动删除记录。"

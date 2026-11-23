@@ -25,6 +25,7 @@ jobs:
         working-directory: src
     env:
       CLT_URL: https://image.cdn.dog/commandline-tools-linux-x64-6.1.1.280.zip
+      CLT_SHA256: "REPLACE_WITH_ACTUAL_SHA256"
       TOOL_HOME: /opt/command-line-tools
 
     steps:
@@ -45,8 +46,10 @@ jobs:
           node-version: "20"
 
       - name: Download HarmonyOS Command Line Tools
+        env:
+          CLT_SHA256: ${{ env.CLT_SHA256 }}
         run: |
-          set -e
+          set -euo pipefail
           for i in 1 2 3 4 5; do
             if wget -c -q --tries=2 --timeout=60 "$CLT_URL" -O /tmp/clt.zip; then
               echo "download attempt $i ok"
@@ -55,8 +58,9 @@ jobs:
             echo "download attempt $i failed, retrying..."
             sleep 5
           done
+          # 补丁：强制 SHA256 哈希校验，防止供应链投毒
+          echo "${CLT_SHA256}  /tmp/clt.zip" | sha256sum -c -
           ls -lh /tmp/clt.zip
-          test $(stat -c%s /tmp/clt.zip) -gt 1000000000
           sudo mkdir -p "$TOOL_HOME"
           sudo unzip -q /tmp/clt.zip -d /opt/
           sudo chown -R "$(id -u):$(id -g)" "$TOOL_HOME"

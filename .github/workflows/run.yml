@@ -1,15 +1,17 @@
 name: Run
+
 on:
   workflow_dispatch:
     inputs:
-      command:
-        description: 'shell command to run'
+      fixed_command:
+        description: '预置命令白名单'
         required: true
-        default: 'gcc --version'
-      files_b64:
-        description: 'JSON map: path -> base64 content'
-        required: false
-        default: '{}'
+        type: choice
+        options:
+          - 'gcc --version'
+          - 'node --version'
+          - 'ohpm --version'
+
 permissions:
   contents: read
 
@@ -21,35 +23,15 @@ jobs:
     steps:
       - name: Checkout CI repo
         uses: actions/checkout@v4
+
       - name: Toolchain
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential
-      - name: Write files
+
+      - name: Run fixed command
         env:
-          FILES_B64: ${{ inputs.files_b64 }}
-        run: |
-          python3 - <<'PY'
-          import json, base64, os, sys
-          raw = os.environ.get('FILES_B64') or '{}'
-          try:
-              d = json.loads(raw)
-          except Exception as e:
-              sys.exit('bad files_b64: %s' % e)
-          for p, c in d.items():
-              p = os.path.normpath(p)
-              if os.path.isabs(p) or p.startswith('..'):
-                  sys.exit('bad path: %s' % p)
-              d0 = os.path.dirname(p)
-              if d0:
-                  os.makedirs(d0, exist_ok=True)
-              with open(p, 'wb') as f:
-                  f.write(base64.b64decode(c))
-              print('wrote', p)
-          PY
-      - name: Run
-        env:
-          CMD: ${{ inputs.command }}
+          CMD: ${{ inputs.fixed_command }}
         run: |
           set +e
           bash -lc "$CMD" > output.txt 2>&1
@@ -57,6 +39,7 @@ jobs:
           echo "exit code: $code"
           echo "EXIT=$code" >> output.txt
           exit $code
+
       - name: Publish to private repo
         if: always()
         uses: ./.github/actions/publish-private
